@@ -27,12 +27,24 @@ def scrape_coway_deep_products():
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(viewport={'width': 1920, 'height': 1080})
+        
+        # 💡 [핵심 수정 1] 완벽한 한국어 환경 및 일반 유저 위장 세팅
+        context = browser.new_context(
+            viewport={'width': 1920, 'height': 1080},
+            locale='ko-KR',
+            timezone_id='Asia/Seoul',
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            extra_http_headers={
+                "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7"
+            }
+        )
         page = context.new_page()
         
         for category_name, list_url in CATEGORY_URLS.items():
             print(f"\n📂 [{category_name}] 카테고리 스캔 중...")
-            page.goto(list_url)
+            
+            # 리스트 페이지 접속 시에도 네트워크 안정화 대기
+            page.goto(list_url, wait_until="networkidle")
             
             try:
                 page.wait_for_selector("li.lp_renew_product", timeout=10000)
@@ -72,14 +84,24 @@ def scrape_coway_deep_products():
             for detail_url in product_links:
                 try:
                     print(f"  ➡️ 접속 중: {detail_url}")
-                    page.goto(detail_url)
                     
-                    # 💡 핵심 수정: .product_name 대신 실제 아이디인 #vipPrdnm을 기다립니다.
+                    # 💡 [핵심 수정 2] 네트워크 통신이 완전히 끝날 때까지 대기
+                    page.goto(detail_url, wait_until="networkidle")
+                    
                     page.wait_for_selector("#vipPrdnm", timeout=10000)
-                    page.wait_for_timeout(1000) # 렌더링 안정화 대기
+                    
+                    # 💡 [핵심 수정 3] 렌더링 덮어쓰기 지연 방지 (2초 확실히 대기)
+                    page.wait_for_timeout(2000) 
                     
                     # 1. 제품명 및 모델명
                     name = page.locator("#vipPrdnm").inner_text().strip()
+                    
+                    # 💡 [안전장치] 혹시라도 이름이 모두 영어(ASCII)로만 되어있다면 2초 더 기다려봄
+                    if name.isascii():
+                        print(f"     ⏳ 영어 명칭 감지됨, 한글 변환 추가 대기 중... ({name})")
+                        page.wait_for_timeout(2000)
+                        name = page.locator("#vipPrdnm").inner_text().strip()
+                        
                     model_code = page.locator("#vipModelno").inner_text().strip() if page.locator("#vipModelno").count() > 0 else ""
                     
                     # 2. 메인 썸네일 이미지
