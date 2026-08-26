@@ -43,13 +43,18 @@ def scrape_coway_deep_products():
         for category_name, list_url in CATEGORY_URLS.items():
             print(f"\n📂 [{category_name}] 카테고리 스캔 중...")
             
-            # 리스트 페이지 접속 시에도 네트워크 안정화 대기
-            page.goto(list_url, wait_until="networkidle")
-            
             try:
-                page.wait_for_selector("li.lp_renew_product", timeout=10000)
+                # 💡 [수정] networkidle 대신 기본값(load)을 사용하고 타임아웃을 60초로 늘림
+                page.goto(list_url, timeout=60000)
+                
+                # 제품 리스트가 화면에 뜰 때까지만 기다림
+                page.wait_for_selector("li.lp_renew_product", timeout=15000)
+                
             except TimeoutError:
-                print(f"⚠️ {category_name} 통과 (제품 없음)")
+                print(f"⚠️ {category_name} 타임아웃 또는 제품 없음 (다음 카테고리로 넘어갑니다)")
+                continue
+            except Exception as e:
+                print(f"⚠️ {category_name} 페이지 로드 중 알 수 없는 에러 발생: {e}")
                 continue
 
             for _ in range(5):
